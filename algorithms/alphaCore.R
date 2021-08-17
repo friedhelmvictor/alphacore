@@ -2,7 +2,7 @@
 #'
 #' \code{alphaCore} returns a node ranking of a graph
 #'
-#' Iteratively computes a node ranking based on a featureset derived from
+#' Iteratively computes a node ranking based on a feature set derived from
 #' edge attributes and optionally static node features using the
 #' mahalanobis data depth function at the origin.
 #'
@@ -15,94 +15,70 @@
 #' @return A dataframe of node name and alpha value indicating the ranking
 alphaCore <- function(input_graph,
                       featureComputeFun = computeNodeFeaturFun,
-                      stepSize = 1,
+                      stepSize = 0.1,
                       startEpsilon = 1,
-                      exponentialDecay = FALSE) {
+                      exponentialDecay = TRUE) {
   
-  #edge_attr(input_graph, "weight") <- normalizeData(edge_attr(input_graph, "weight"))
-  
+  #1
+  node_features = featureComputeFun(input_graph)
+  #2
+  cov_mat_inv <- solve(cov(node_features[, -c("node")]), tol = NULL)
+  # temporary ----
+  cov_mat <- cov(node_features[, -c("node")])
+  # temporary ----
+  #3
+  node_features$depth <- mhdOrigin(node_features[, !c("node")], cov_mat_inv)
+  #4
   epsilon <- startEpsilon
-  previousEpsilon <- startEpsilon
-  result <- list()
-  localStepSize <- ceiling(vcount(input_graph) * stepSize)
-  
-  # internal function that reduces the epsilon (either dynamically or fixed stepSize)
-  reduceEpsilon <- function() {
-    previousEpsilon <<- epsilon
-    if(!exponentialDecay) {
-      return(epsilon - stepSize)
-    }
-    
-    if(stepSize < 1) {
-      if(exponentialDecay) {
-        localStepSize <- ceiling(vcount(input_graph) * stepSize)
-      }
-      newEpsilon <- min(head(node_features[order(depth, decreasing = T)], localStepSize)$depth)
-      if(newEpsilon < epsilon) {
-        epsilon <- newEpsilon
-      }
-    } else {
-      stop("Step size should be < 1")
-    }
-    return(epsilon)
-  }
-  
-  batch = 0
-  print("Computing initial features...")
-  initialFeatures <- featureComputeFun(input_graph)
-  initial_covariance_mat <- cov(initialFeatures[, -c("node")])
-  while(epsilon >= 0) {
-    print(paste("nodes remaining:", vcount(input_graph), "current epsilon:", epsilon))
-    
-    if(vcount(input_graph)<=1){ # EXIT condition
-      message("Graph has no nodes left.")
-      return(do.call(rbind, result))
-    }
-    
-    # compute features
-    if(exists("initialFeatures")) {
-      node_features <- initialFeatures
-      remove(initialFeatures)
-    } else {
-      print("Computing features...")
-      node_features <- featureComputeFun(input_graph) 
-    }
-    
-    # compute depth of each node based on features
-    only_features <- node_features[, !c("node")]
-    node_features$depth <- round(1/(1 + mahalanobis.origin(only_features, initial_covariance_mat)), 10)
-    
-    # select nodes with high depth value for deletion
-    nodesToBeDeleted <- node_features[depth >= epsilon]
-    
-    # if there are any nodes that are to be deleted
-    if(nrow(nodesToBeDeleted) > 0) {
-      batch <- batch + 1
+  #5
+  result <- node_features[, c("node")]
+  result$alpha <- 0
+  #6
+  result$batch <- 0
+  #7
+  alpha <- 1 - epsilon # modified
+  #8
+  alpha_prev <- alpha # modified
+  #9
+  batch_ID <- 0
+  #10
+  while (vcount(input_graph) > 0) {
+    #11
+    repeat{
+      #12: for each depth geq epsilon
+      #13
+      nodes <- node_features[depth >= epsilon]$node
+      result[node %in% nodes, alpha := alpha_prev]
+      #14
+      result[node %in% nodes, batch := batch_ID]
+      #15
+      input_graph <- delete_vertices(input_graph, nodes)
+      #16
+      batch_ID <- batch_ID + 1
+      #17
+      node_features = featureComputeFun(input_graph)
+      #18
+      node_features$depth <- mhdOrigin(node_features[, !c("node")], cov_mat_inv)
       
-      # delete vertices from input_graph
-      input_graph <- delete_vertices(input_graph, nodesToBeDeleted$node)
-      # find and add isolated nodes
-      isolated <- names(which(degree(input_graph) == 0))
-      input_graph <- delete_vertices(input_graph, isolated)
-      nodesToBeDeleted <- rbind(nodesToBeDeleted, node_features[node %in% isolated])
-      
-      # check if after deletion only one node would remain
-      # if so, delete the remaining one as well, as we can't compute data depth for one node
-      if(nrow(node_features) - nrow(nodesToBeDeleted) == 1) {
-        nodesToBeDeleted <- node_features
+      if(length(nodes) == 0){ # 19 : if there doesn't exist a vertex with depth geq epsilon
+        break
       }
-      #record alpha level for deleted nodes prior to removing them
-      nodesToBeDeleted[, alpha := 1-previousEpsilon]
-      print(paste("previous eps", previousEpsilon))
-      nodesToBeDeleted[, batch := batch]
-      result[[batch]] <- nodesToBeDeleted
     }
-    else { # No nodes to delete
-      print(paste("No nodes to be deleted"))
-      epsilon <- reduceEpsilon()
+    #20
+    alpha_prev <- alpha
+    #22 # reduce epsilon with strategy
+    if(exponentialDecay) {
+      localStepSize <- ceiling(vcount(input_graph) * stepSize)
+      epsilon <- min(head(node_features[order(depth, decreasing = T)], localStepSize)$depth)
+    } else {
+      epsilon <- epsilon - stepSize
     }
+    #21
+    alpha <- 1 - epsilon
+    
   }
-  return(do.call(rbind, result))
+  return(result)
+  #
 }
 
 
@@ -162,23 +138,11 @@ customNodeFeatures <- function(features) {
 }
 
 
-mahalanobis.origin <- function(data, sigma) {
-  # calculate the mahalanobis depth with respect to the origin
-  sigma.inv <- try(solve(sigma), silent = TRUE)
-  if (!is.matrix(sigma.inv)) {
-    sv <- svd(sigma)
-    distance <- tryCatch(
-      {
-        sigma.inv <- sv$v %*% diag(1/sv$d) %*% t(sv$u)
-        warning("Inverse of sigma computed by SVD")
-        distance <- apply(data, 1, FUN=function(x){sqrt(sum((x-0) ^ 2))})
-        return(distance)
-      },
-      error=function(cond) {
-        return(rep(0, nrow(data)))
-      }
-    )
-    return(distance)
-  }
-  apply(data, 1, function(x) x %*% sigma.inv %*% matrix(x))
+mhdOrigin <- function(data, sigma_inv) {
+  origin <- rep(0,ncol(data)) # c(0,0,...)
+  # We reuse the Mahalanobis distance implementation of the stats package,
+  # which returns the squared Mahalanobis distance: (x - μ)' Σ^-1 (x - μ) = D^2
+  # To arrive at the Mahalanobis Depth to the origin, we only need to add 1 and
+  # take the reciprocal.
+  return((1 + stats::mahalanobis(data, center = origin, sigma_inv, inverted = TRUE))^-1)
 }

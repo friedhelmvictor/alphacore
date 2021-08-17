@@ -84,10 +84,9 @@ w_closeness_centrality_wrapped <- function(graph) {
 }
 
 only_data_depth_wrapped <- function(graph, features) {
-  edge_attr(graph, "weight") <- normalizeData(edge_attr(graph, "weight"))
   featureDF <- customNodeFeatures(features)(graph)
-  initial_covariance_mat <- cov(featureDF[, -c("node")])
-  featureDF$depth <- round(1/(1 + mahalanobis.origin(featureDF[, !c("node")], initial_covariance_mat)), 10)
+  cov_mat_inv <- solve(cov(featureDF[, -c("node")]), tol = NULL)
+  featureDF$depth <- mhdOrigin(featureDF[, !c("node")], cov_mat_inv)
   res <- 1 - featureDF$depth
   names(res) <- featureDF$node
   return(res)
