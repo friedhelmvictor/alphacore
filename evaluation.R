@@ -13,9 +13,10 @@ source("figureUtils.R")
 
 # Token networks SQLite database
 # Please make sure you have downloaded and extracted the database file
-# https://mega.nz/file/6WIiEQ5b#s4HmjOkO9WbB_-egCpmjqWoRup9iVUG2RaR6IBtS3UA
+# and exchange labels obtainable at the following URI:
+# https://zenodo.org/record/4898412
 tokenDBFile <- "data/tokens/transfers.db"
-accountLabelsFile <- "data/tokens/etherscanLabels20200529.csv"
+accountLabelsFile <- "data/tokens/exchangeLabels.csv"
 
 # Reddit crosslinks
 # Post_crosslinks_info.tsv is part of http://snap.stanford.edu/conflict/conflict_data.zip
@@ -64,7 +65,7 @@ reddit_g <- graph_from_data_frame(reddit_crosslinks[, list(weight = .N), by=list
 # The database contains the 28 token networks with at least 10 exchange nodes.
 # We retrieve all 28 network identifiers from the database, to load them one by one.
 tokenNetworks <- getTokenAddresses(tokenDBFile)
-exchangeLabels <- unique(fread(accountLabelsFile)[type %in% c("exchange", "dex")]$address)
+exchangeLabels <- fread(accountLabelsFile)$address
 
 ###########################################################################
 ###########################################################################
@@ -194,7 +195,7 @@ ggsave(filename = paste0(out_dir, "graphOrderPlot.pdf"), width = 5, height = 3)
 ###########################################################################
 
 sccTransfers <- fread(sccNetworkFile)
-sccGraph <- graph_from_data_frame(sccTransfers[, list(source, target, weight = normalizeData(amount))])
+sccGraph <- graph_from_data_frame(sccTransfers[, list(source, target, weight = amount)])
 
 alphaRes <- alphaCore(sccGraph, featureComputeFun = customNodeFeatures(c("inneighborhoodsize","instrength", "outstrength")),
                       exponentialDecay = T, stepSize = 0.25)
