@@ -41,16 +41,16 @@ def alphaCore(graph, stepSize = 0.1, startEpsi = 1, expoDecay = False):
         while True:
             depthFound = False  # to simulate do-while loop; used to check if there exists a node with depth >= epsi on current iteration
             #12
-            for index, row in data.iterrows():
-                if row['mahal'] >= epsi:
+            for row in data.itertuples():
+                if row.mahal >= epsi:
                     depthFound = True
                     #13
-                    node.append(row['nodeID'])  # set node core
+                    node.append(row.nodeID)  # set node core
                     alphaVals.append(alphaPrev)
                     #14
                     batch.append(batchID)
                     #15
-                    graph.remove_node(row['nodeID'])
+                    graph.remove_node(row.nodeID)
             #16
             batchID += 1
             #19 while condition of do-while loop of #11
