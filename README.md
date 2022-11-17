@@ -46,6 +46,28 @@ V(g)$name <- paste("v", 1:vcount(g), sep="")
 200: v200 0.0000000     8
 ```
 
+### Python implementation (contributed by Jason Zhu!) example:
+```
+> import networkx as nx
+> G = nx.erdos_renyi_graph(n=200, seed=1, p=2/200, directed=True)
+> for idx, (u,v,w) in enumerate(G.edges(data=True)):
+      w['value'] = idx
+
+> alphaCore(G)
+   nodeID 	alpha   batchID
+0 	    18 	  0.0         0
+1 	    75 	  0.0 	     0
+2 	    78 	  0.0 	     0
+3 	    25 	  0.3 	     5
+4 	    91 	  0.3 	     5
+... 	... 	  ... 	   ...
+195 	  8 	  0.7 	    27
+196 	131 	  0.7 	    27
+197 	185 	  0.7 	    27
+198 	192 	  0.7 	    27
+199 	158 	  0.7 	    28
+```
+
 ## Evaluation
 
 In order to run, you first need to download the three datasets:
