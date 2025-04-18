@@ -1,5 +1,10 @@
 # AlphaCore
 
+AlphaCore is a novel core decomposition algorithm that leverages data depth (specifically, Mahalanobis depth) to identify and rank the most central nodes in complex networks. Unlike traditional methods (e.g., k-core) that only consider the number of connections, AlphaCore integrates multiple node features without normalization, offering a more robust analysis of network structure.
+
+"_Alphacore adopts a depth-based methodology to address multidimensional node attributes, leveraging the Mahalanobis depth for the identification of core structures based on depth. This approach allows for the nuanced analysis of nodes with multiple attributes, distinguishing Alphacore from traditional core detection methods._" [Kim et al.](https://dl.acm.org/doi/10.1016/j.ins.2024.120664)
+
+
 These are the supplementary files for the [AlphaCore KDD paper](https://dl.acm.org/doi/10.1145/3447548.3467322).
 
 ## Usage
