@@ -7,25 +7,33 @@
 #' mahalanobis data depth function at the origin.
 #'
 #' @param input_graph An igraph object of a directed graph
-#' @param featureComputeFun A function that converts a node's edges (with
-#'   attributes) into node features. Default computes in-degree and strength
+#' @param features A list of selected node features; default is ["all"]
 #' @param stepSize defines the stepsize of each iteration as percentage of node count
+#'   Higher values (e.g., > 0.1) speed up execution but yield lower ranking resolution, while lower values (e.g., < 0.1)
+#'   provide finer ranking but increase runtime.
 #' @param startEpsilon the epsilon to start with. Removes all nodes with depth>epsilon at start
+#'   Higher values (e.g., > 1.0) remove more nodes early, emphasizing denser cores,
+#'   whereas lower values (e.g., < 1.0) allow for a more gradual refinement of the ranking.
 #' @param exponentialDecay dynamically reduces the step size, to have high cores with few nodes
+#'   which results in higher resolution for the highest cores. Set to TRUE if node ranking precision is more important than speed.
 #' @return A dataframe of node name and alpha value indicating the ranking
 alphaCore <- function(input_graph,
-                      featureComputeFun = computeNodeFeaturFun,
+                      features = "all",
                       stepSize = 0.1,
                       startEpsilon = 1,
                       exponentialDecay = TRUE) {
   
-  #1
-  node_features = featureComputeFun(input_graph)
-  #2
-  cov_mat_inv <- solve(cov(node_features[, -c("node")]), tol = NULL)
-  # temporary ----
+  #1 Extract numerical node features from the graph
+  node_features <- extractFeatures(input_graph, features)
+  #2 Compute covariance matrix
   cov_mat <- cov(node_features[, -c("node")])
-  # temporary ----
+  #Try computing the inverse; fallback to pseudo-inverse for stability
+  tryCatch({
+    cov_mat_inv <- solve(cov_mat)
+  }, error = function(e) {
+    message("Covariance matrix is not invertible; using pseudo-inverse for stability.")
+    cov_mat_inv <- MASS::ginv(cov_mat)  
+  })
   #3
   node_features$depth <- mhdOrigin(node_features[, !c("node")], cov_mat_inv)
   #4
@@ -56,7 +64,7 @@ alphaCore <- function(input_graph,
       #16
       batch_ID <- batch_ID + 1
       #17
-      node_features = featureComputeFun(input_graph)
+      node_features <- extractFeatures(input_graph, features)
       #18
       node_features$depth <- mhdOrigin(node_features[, !c("node")], cov_mat_inv)
       
@@ -83,6 +91,30 @@ alphaCore <- function(input_graph,
 
 
 ############################## AUX FUNCTIONS ################################
+# Extract numerical node features from the graph
+extractFeatures <- function(graph, features) {
+  all_features <- names(vertex.attributes(graph))
+  numeric_features <- all_features[sapply(all_features, function(f) is.numeric(V(graph)[[f]]))]
+  
+  if (features == "all") {
+    if (length(numeric_features) == 0) {
+      message("No numerical node features found. Reverting to default AlphaCore node features.")
+      return(computeNodeFeatures(graph))
+    }
+    selected_features <- numeric_features
+  } else {
+    selected_features <- intersect(features, numeric_features)
+    if (length(selected_features) == 0) {
+      message("None of the selected features are numerical. Reverting to default AlphaCore node features.")
+      return(computeNodeFeatures(graph))
+    }
+  }
+  
+  data <- as.data.table(setNames(lapply(selected_features, function(f) V(graph)[[f]]), selected_features))
+  data[, node := V(graph)$name]
+  return(data)
+}
+
 
 computeNodeFeaturFun <- function(graph) {
   # get node names
@@ -144,5 +176,5 @@ mhdOrigin <- function(data, sigma_inv) {
   # which returns the squared Mahalanobis distance: (x - μ)' Σ^-1 (x - μ) = D^2
   # To arrive at the Mahalanobis Depth to the origin, we only need to add 1 and
   # take the reciprocal.
-  return((1 + stats::mahalanobis(data, center = origin, sigma_inv, inverted = TRUE))^-1)
+  return((1 + pmax(stats::mahalanobis(data, center = origin, sigma_inv, inverted = TRUE), 0))^-1)
 }
