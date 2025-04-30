@@ -7,27 +7,40 @@
 #' mahalanobis data depth function at the origin.
 #'
 #' @param input_graph An igraph object of a directed graph
-#' @param featureComputeFun A function that converts a node's edges (with
-#'   attributes) into node features. Default computes in-degree and strength
+#' @param features A list of selected node features; default is ["all"]
 #' @param stepSize defines the stepsize of each iteration as percentage of node count
+#'   Higher values (e.g., > 0.1) speed up execution but yield lower ranking resolution, while lower values (e.g., < 0.1)
+#'   provide finer ranking but increase runtime.
 #' @param startEpsilon the epsilon to start with. Removes all nodes with depth>epsilon at start
+#'   Higher values (e.g., > 1.0) remove more nodes early, emphasizing denser cores,
+#'   whereas lower values (e.g., < 1.0) allow for a more gradual refinement of the ranking.
 #' @param exponentialDecay dynamically reduces the step size, to have high cores with few nodes
+#'   which results in higher resolution for the highest cores. Set to TRUE if node ranking precision is more important than speed.
 #' @return A dataframe of node name and alpha value indicating the ranking
 alphaCore <- function(input_graph,
-                      featureComputeFun = computeNodeFeaturFun,
+                      features = "all",
                       stepSize = 0.1,
                       startEpsilon = 1,
                       exponentialDecay = TRUE) {
-  
-  #1
-  node_features = featureComputeFun(input_graph)
-  #2
-  cov_mat_inv <- solve(cov(node_features[, -c("node")]), tol = NULL)
-  # temporary ----
-  cov_mat <- cov(node_features[, -c("node")])
-  # temporary ----
+  #1 Extract numerical node features from the graph
+  node_features <- extractFeatures(input_graph, features)
+
+  #2 Compute covariance matrix
+  cov_mat  <- cov(node_features[, -1, with = FALSE])
+  cov_mat_inv <- tryCatch(
+    solve(cov_mat),
+    error = function(e1) {
+      message("Covariance singular; falling back to pseudo-inverse.")
+      mat <- MASS::ginv(cov_mat)
+      if (nrow(mat) == 0 || ncol(mat) == 0) {
+        stop("Could not invert covariance: no valid features remain.")
+      }
+      mat
+    }
+  )
   #3
-  node_features$depth <- mhdOrigin(node_features[, !c("node")], cov_mat_inv)
+  node_features$depth <- mhdOrigin(node_features[, -1, with = FALSE], cov_mat_inv)
+
   #4
   epsilon <- startEpsilon
   #5
@@ -51,14 +64,13 @@ alphaCore <- function(input_graph,
       result[node %in% nodes, alpha := alpha_prev]
       #14
       result[node %in% nodes, batch := batch_ID]
-      #15
       input_graph <- delete_vertices(input_graph, nodes)
-      #16
+      #16 
       batch_ID <- batch_ID + 1
       #17
-      node_features = featureComputeFun(input_graph)
+      node_features <- extractFeatures(input_graph, features)
       #18
-      node_features$depth <- mhdOrigin(node_features[, !c("node")], cov_mat_inv)
+      node_features$depth <- mhdOrigin(node_features[, -1, with = FALSE], cov_mat_inv)
       
       if(length(nodes) == 0){ # 19 : if there doesn't exist a vertex with depth geq epsilon
         break
@@ -84,7 +96,14 @@ alphaCore <- function(input_graph,
 
 ############################## AUX FUNCTIONS ################################
 
+#' Compute default node features for alphaCore
+#'
+#' \code{computeNodeFeaturFun} returns a data.table with indegree and strength
+#'
+#' @param graph An igraph object
+#' @return A data.table with node names, indegree and strength
 computeNodeFeaturFun <- function(graph) {
+
   # get node names
   nodes <- V(graph)$name
   # compute indegree
@@ -96,7 +115,15 @@ computeNodeFeaturFun <- function(graph) {
   return(nodeFeatures)
 }
 
-computeNodeFeatures <- function(graph, features) {
+
+#' Compute specified node features
+#'
+#' \code{computeNodeFeatures} calculates requested network features for each node
+#'
+#' @param graph An igraph object
+#' @param features A character vector of features to compute
+#' @return A data.table with node names and the requested features
+computeNodeFeatures <- function(graph, features = c("indegree","strength")) {
   nodeFeatures <- data.table(node = V(graph)$name)
   if("degree" %in% features) {
     nodeFeatures[, indegree := degree(graph, mode = "all")]
@@ -138,11 +165,63 @@ customNodeFeatures <- function(features) {
 }
 
 
+#' Extract numerical node features from a graph
+#'
+#' \code{extractFeatures} returns a data.table of node features
+#'
+#' Extracts numerical vertex attributes from the graph. If specified features
+#' don't exist as vertex attributes, they will be computed on demand.
+#'
+#' @param graph An igraph object
+#' @param features Features to extract: "all" for all numeric attributes, or a character vector of specific features
+#' @return A data.table with node names and requested features
+extractFeatures <- function(graph, features = "all") {
+  #If the user explicitly requested a feature list, compute those
+  if (!identical(features, "all")) {
+    df <- computeNodeFeatures(graph, features = features)
+    missing <- setdiff(features, names(df))
+    if (length(missing) > 0L) {
+      stop(
+        "Vertex attribute(s) not found or not numeric: ",
+        paste(missing, collapse = ", "),
+        call. = FALSE
+      )
+    }
+    return(df)
+  }
+
+  #Otherwise, pull *all* numeric vertex attributes off the graph
+  attrs <- vertex.attributes(graph)
+  numeric_names <- names(attrs)[sapply(attrs, is.numeric)]
+
+  #If none are present, fall back to the original indegree+strength
+  if (length(numeric_names) == 0L) {
+    message(
+      "No numeric vertex attributes found; reverting to indegree+strength."
+    )
+    return(computeNodeFeaturFun(graph))
+  }
+
+  #Build a data.table: one column 'node', then each numeric attribute
+  dt <- data.table(node = V(graph)$name)
+  for (nm in numeric_names) dt[[nm]] <- attrs[[nm]]
+  return(dt[])
+}
+
+
+
+#' Calculate the Mahalanobis depth to the origin
+#'
+#' \code{mhdOrigin} calculates the Mahalanobis depth of data points to the origin
+#'
+#' @param data A matrix or data.frame of multivariate data
+#' @param sigma_inv The inverse covariance matrix
+#' @return A vector of depth values
 mhdOrigin <- function(data, sigma_inv) {
   origin <- rep(0,ncol(data)) # c(0,0,...)
   # We reuse the Mahalanobis distance implementation of the stats package,
   # which returns the squared Mahalanobis distance: (x - μ)' Σ^-1 (x - μ) = D^2
   # To arrive at the Mahalanobis Depth to the origin, we only need to add 1 and
   # take the reciprocal.
-  return((1 + stats::mahalanobis(data, center = origin, sigma_inv, inverted = TRUE))^-1)
+  return((1 + pmax(stats::mahalanobis(data, center = origin, sigma_inv, inverted = TRUE), 0))^-1)
 }

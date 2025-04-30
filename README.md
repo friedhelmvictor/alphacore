@@ -8,9 +8,11 @@ AlphaCore is a novel core decomposition algorithm that leverages data depth (spe
 These are the supplementary files for the [AlphaCore KDD paper](https://dl.acm.org/doi/10.1145/3447548.3467322).
 
 ## Usage
+
 Until this is packaged, source the file algorithms/alphaCore.R
 
 ### Get a graph with named vertices and edge weights:
+
 ```
 g <- erdos.renyi.game(200, 2/200, directed = T)
 E(g)$weight <- 1:ecount(g)
@@ -18,40 +20,45 @@ V(g)$name <- paste("v", 1:vcount(g), sep="")
 ```
 
 ### Run alphaCore with default parameters
+
 ```
 > alphaCore(g)
-     node     alpha batch
-  1:   v1 0.3281309    19
-  2:   v2 0.3281309    30
-  3:   v3 0.3724843    34
-  4:   v4 0.3281309    23
-  5:   v5 0.3281309    19
- ---                     
-196: v196 0.3281309    28
-197: v197 0.0000000     1
-198: v198 0.3724843    34
-199: v199 0.3281309    23
-200: v200 0.3281309    23
+   node          alpha batch
+   1:     v1 0.0000000    18
+   2:     v2 0.0000000    10
+   3:     v3 0.0000000    12
+   4:     v4 0.0000000     6
+   5:     v5 0.4193455    24
+ ---
+196:   v196 0.4193455     25
+197:   v197 0.0000000     12
+198:   v198 0.4193455     24
+199:   v199 0.0000000     11
+200:   v200 0.4193455     23
 ```
 
 ### Run alphaCore with builtin edge property functions
+
 ```
-> alphaCore(g, featureComputeFun = customNodeFeatures(c("indegree", "triangles")))
-     node     alpha batch
-  1:   v1 0.3060040    14
-  2:   v2 0.0000000     6
-  3:   v3 0.0000000     5
-  4:   v4 0.0000000     5
-  5:   v5 0.0000000     6
- ---                     
-196: v196 0.6381691    19
-197: v197 0.0000000     5
-198: v198 0.0000000     5
-199: v199 0.6381691    19
-200: v200 0.0000000     8
+> alphaCore(g, features = c("indegree", "triangles"))
+   node      alpha    batch
+   1:     v1     0       4
+   2:     v2     0       7
+   3:     v3     0       5
+   4:     v4     0       4
+   5:     v5     0       5
+   6:     v6     0       4
+   ---
+195:   v195 0.3842658    12
+196:   v196 0.0000000     7
+197:   v197 0.0000000     5
+198:   v198 0.0000000     4
+199:   v199 0.3842658    12
+200:   v200 0.0000000     4
 ```
 
 ### Python implementation (contributed by Jason Zhu!) example:
+
 ```
 > import networkx as nx
 > G = nx.erdos_renyi_graph(n=200, seed=1, p=2/200, directed=True)
@@ -78,20 +85,24 @@ V(g)$name <- paste("v", 1:vcount(g), sep="")
 In order to run, you first need to download the three datasets:
 
 ### Token Networks (11.4GB)
+
 The files are hosted at: https://zenodo.org/record/4898412
 Store the transfers.db in data/tokens/transfers.db
 The matching exchangeLabels.csv file should be placed at data/tokens/exchangeLabels.csv
 
 ### Reddit Crosslinks
+
 The reddit crosslinks are part of http://snap.stanford.edu/conflict/conflict_data.zip
 In the zip file, they can be found in /prediction/detailed_data/
 Place the file at the location data/reddit/post_crosslinks_info.tsv
 
 ### Flight routes
+
 Get this file from http://opsahl.co.uk/tnet/datasets/openflights.txt
 and store it in data/flights/openflights.txt.
 
 ### Running the evaluation
+
 Open up the file evaluation.R from the main directory.
 
 This is the main file to run the evaluation.
@@ -102,7 +113,9 @@ To run the entire evaluation, ideally do so on a server with Rscript, as some al
 AlphaCore with an exponentially decaying step size however is quite fast, even though it is only an R implementation.
 
 # Citing
+
 Please use the following BibTeX entry:
+
 ```
 @inproceedings{10.1145/3447548.3467322,
 author = {Victor, Friedhelm and Akcora, Cuneyt G. and Gel, Yulia R. and Kantarcioglu, Murat},
